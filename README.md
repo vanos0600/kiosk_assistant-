@@ -61,3 +61,6 @@ IV. Despliegue y Ejecución (Docker/CI)
 3,(Navegador) http://localhost:8501,Acceder a la aplicación Streamlit en el navegador.,Interfaz lista para recibir audio y procesar el ASR/LLM.
 4,docker ps,Verificar que el contenedor esté corriendo.,Mostrar el ID y el estado Up X seconds.
 5,docker stop [ID],Detener el contenedor después de la prueba.,Finaliza el proceso de la aplicación.
+
+
+El link del proyecto: http://localhost:8501/ 
