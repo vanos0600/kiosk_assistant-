@@ -1,0 +1,10 @@
+# Archivos de entorno y claves
+.env
+
+# Directorios de Python
+__pycache__/
+*.pyc
+
+# Directorios de Entornos Virtuales
+venv/
+.venv/
