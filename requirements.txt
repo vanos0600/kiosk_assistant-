@@ -1,5 +1,9 @@
+
+
+# Contents of requirements.txt
 streamlit
-openai
-SpeechRecognition
+google-genai 
+streamlit-mic-recorder 
+speechrecognition
 pydub
 python-dotenv

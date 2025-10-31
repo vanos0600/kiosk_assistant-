@@ -1,138 +1,135 @@
 import streamlit as st
-import openai
+from google import genai 
+from google.genai.errors import APIError
 import os
 import io
 import tempfile
 from pydub import AudioSegment
 import speech_recognition as sr
 from dotenv import load_dotenv
+from streamlit_mic_recorder import mic_recorder 
 
-# --- 0. Configuración Inicial y Keys ---
-# Carga las variables de entorno desde .env
+# --- 0. Initial Configuration and Keys ---
 load_dotenv()
 try:
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    if not openai.api_key:
-        st.error("Error: La clave OPENAI_API_KEY no está configurada en el archivo .env. Por favor, revísalo.")
+    gemini_api_key = os.getenv("GEMINI_API_KEY") 
+    if not gemini_api_key:
+        st.error("Error: The GEMINI_API_KEY is not configured in the .env file. Please check it.")
         st.stop()
+    client = genai.Client(api_key=gemini_api_key)
 except Exception:
-    st.error("Error al inicializar la API de OpenAI. Revisa tu clave y las variables de entorno.")
+    st.error("Error initializing the Gemini API. Please check your key and environment variables.")
     st.stop()
 
-# --- 1. Núcleo ASR (Speech-to-Text) ---
-def transcribe_audio(audio_data):
-    """
-    Usa SpeechRecognition (con el motor de Google) para transcribir datos de audio.
-    Utiliza pydub y un archivo temporal para asegurar que el audio es compatible con WAV.
-    """
+# --- 1. ASR Core (Speech-to-Text) ---
+def transcribe_audio(audio_bytes):
+    """Transcribes audio using Google Speech Recognition, standardizing the format via pydub."""
     recognizer = sr.Recognizer()
     
-    # Crea un archivo temporal para que pydub pueda trabajar y SpeechRecognition pueda leer
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
         temp_filename = tmp_file.name
         
         try:
-            # Pydub estandariza el audio subido (incluso si es .wav, lo formatea correctamente)
-            audio_segment = AudioSegment.from_file(io.BytesIO(audio_data.getvalue()))
+            # pydub loads the raw bytes from the microphone recorder
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
             audio_segment.export(temp_filename, format="wav")
             
-            # SpeechRecognition lee el archivo WAV estandarizado
             with sr.AudioFile(temp_filename) as source:
                 audio = recognizer.record(source)
-                # Usamos el motor de Google ASR (gratuito y potente para demos)
-                transcription = recognizer.recognize_google(audio, language="es-ES")
+                transcription = recognizer.recognize_google(audio, language="en-US") # Switched to EN for consistency, adjust if Spanish needed
                 return transcription
         
         except sr.UnknownValueError:
-            return "No pude entender el audio. Por favor, habla más claro."
+            return "Could not understand the audio. Please speak more clearly."
         except sr.RequestError as e:
-            return f"Error en el servicio de reconocimiento de voz de Google; revisa tu conexión a internet. Error: {e}"
+            return f"Error with Google Speech Recognition service; check your internet connection. Error: {e}"
         except Exception as e:
-            return f"Error de procesamiento de audio: {e}"
+            return f"Audio processing error: {e}"
         finally:
-            # Asegura la eliminación del archivo temporal, manejando el error de permiso de Windows
             if os.path.exists(temp_filename):
                 try:
                     os.remove(temp_filename)
                 except PermissionError:
-                    # Este bloque ignora el WinError 32 (archivo en uso) para que el demo no falle.
-                    # El archivo temporal se eliminará cuando Windows libere el handle.
-                    st.warning("Advertencia: No se pudo eliminar el archivo temporal inmediatamente (problema de permisos de Windows).")
+                    st.warning("Warning: Could not immediately delete the temporary file (Windows permission issue).")
                 except Exception as e:
-                    # Captura otros posibles errores de eliminación
-                    st.warning(f"Advertencia al intentar eliminar archivo temporal: {e}")
+                    st.warning(f"Warning while trying to delete temporary file: {e}")
 
-# --- 2. Cerebro LLM (Respuesta Adaptativa) ---
+
+# --- 2. LLM Brain (Adaptive Response with GEMINI) ---
 def get_adaptive_response(transcription: str):
-    """
-    Genera una respuesta adaptativa basada en la transcripción del usuario,
-    detectando si hay confusión o si solo es una declaración de datos.
-    """
+    """Generates an adaptive response using Google Gemini (gemini-2.5-flash)."""
     system_prompt = f"""
-    Eres un asistente digital de quiosco, amable y extremadamente servicial. Tu trabajo es guiar al usuario 
-    que está llenando un formulario. Analiza su transcripción y genera una respuesta adaptativa:
+    You are a friendly, highly helpful digital kiosk assistant. Your job is to guide the user filling out a form. Analyze their transcription and generate an adaptive response based on the user's intent:
 
-    1.  **Detección de Dificultad/Pregunta (Ej: "¿Cómo lleno esto?", "No entiendo").**
-    2.  **Respuesta (Confusión):** Responde con calma, reasegurando al usuario y dándole una instrucción *simple y directa* para el siguiente paso, o pidiendo clarificación.
-    3.  **Detección de Declaración/Afirmación (Ej: "Mi nombre es Juan", "La siguiente página").**
-    4.  **Respuesta (Declaración):** Simplemente confirma brevemente de forma amistosa (Ej: "Entendido.", "Procesando datos.") y espera la siguiente instrucción.
+    1.  **Detect Difficulty/Question (E.g., "How do I fill this out?", "I don't understand").**
+    2.  **Response (Confusion):** Respond calmly, reassure the user, and give a *simple, direct* instruction for the next step, or ask for clarification.
+    3.  **Detect Statement/Affirmation (E.g., "My name is John", "The next page").**
+    4.  **Response (Statement):** Simply confirm briefly in a friendly manner (E.g., "Understood.", "Processing data.") and wait for the next instruction.
 
-    Mantén la respuesta concisa (máximo 2 frases).
+    Keep the response very concise (maximum 2 sentences).
 
-    La transcripción del usuario es: "{transcription}"
+    The user's transcription is: "{transcription}"
     """
 
     try:
-        client = openai.OpenAI()
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # Elegido por su rapidez y bajo costo para demos
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": transcription}
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=[
+                {"role": "system", "parts": [{"text": system_prompt}]},
+                {"role": "user", "parts": [{"text": transcription}]}
             ],
-            temperature=0.2 # Mantenemos la temperatura baja para respuestas más predecibles
+            config={"temperature": 0.2}
         )
-        return response.choices[0].message.content
+        return response.text
+    except APIError as e:
+        return f"Error contacting the Gemini API: {e}. Ensure your GEMINI_API_KEY is correct and your project has API access."
     except Exception as e:
-        return f"Error al contactar a la API de OpenAI: {e}"
+        return f"Unexpected Gemini error: {e}"
 
-# --- 3. Interfaz Streamlit ---
+# --- 3. Streamlit Interface ---
 def main():
     st.set_page_config(page_title="Voice-Aware Kiosk Assistant 🤖", layout="wide")
-    st.title("🤖 Asistente de Quiosco por Voz")
-    st.subheader("Demo: Detección de Confusión + Respuesta Adaptativa")
+    st.title("🤖 Voice-Aware Kiosk Assistant (Gemini & Mic)")
+    st.subheader("Demo: Live Voice Capture + Free Adaptive Response")
 
     st.markdown("""
-        Sube un archivo de audio (.wav, .mp3, .m4a) para simular la voz de un usuario interactuando con el quiosco.
+        **1. Click the microphone button to record.** **2. Click 'Stop'** to transcribe and get the adaptive response from Gemini.
     """)
+    st.divider()
 
-    uploaded_file = st.file_uploader("🎤 Carga tu audio (.wav, .mp3, .m4a)", type=["wav", "mp3", "m4a"])
+    # NEW: Microphone Recording Component
+    mic_result = mic_recorder(
+        start_prompt="🎙️ Click to Record",
+        stop_prompt="🛑 Click to Stop",
+        key='mic_recorder',
+        format='wav'
+    )
 
-    if uploaded_file is not None:
-        st.success("Archivo subido con éxito.")
+    if mic_result and mic_result.get('bytes'):
+        audio_bytes = mic_result.get('bytes')
+        st.success("Recording captured. Processing...")
         
-        # Mostrar el audio para feedback
-        st.audio(uploaded_file, format=uploaded_file.type)
+        st.audio(audio_bytes, format='audio/wav')
         st.divider()
         
-        # --- Lógica de Procesamiento ---
+        # --- Processing Logic ---
         
-        # 1. Transcripción ASR
-        with st.spinner("1. Transcribiendo audio (ASR) con Google Speech Recognition..."):
-            transcription_text = transcribe_audio(uploaded_file)
+        # 1. ASR Transcription
+        with st.spinner("1. Transcribing audio (ASR) with Google Speech Recognition..."):
+            transcription_text = transcribe_audio(audio_bytes)
         
-        st.info(f"**Transcripción del Usuario:**\n\n_{transcription_text}_")
+        st.info(f"**User Transcription:**\n\n_{transcription_text}_")
         
-        if "No pude entender" in transcription_text or "Error" in transcription_text:
-            st.error("No se pudo obtener una transcripción clara. Por favor, intenta de nuevo.")
+        if "Could not understand" in transcription_text or "Error" in transcription_text:
+            st.error("Could not get a clear transcription. Please try again.")
             return
 
-        # 2. Análisis y Respuesta LLM
-        with st.spinner("2. Analizando intención y generando respuesta adaptativa (LLM)..."):
+        # 2. LLM Analysis and Response (Gemini)
+        with st.spinner("2. Analyzing intent and generating adaptive response (Gemini)..."):
             llm_response = get_adaptive_response(transcription_text)
 
         st.divider()
-        st.subheader("💡 Respuesta del Asistente Adaptativo")
+        st.subheader("💡 Adaptive Assistant Response (Gemini)")
         st.code(llm_response, language='markdown')
 
 
