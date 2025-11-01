@@ -1,66 +1,66 @@
-AI Kiosk: Voice-Aware Kiosk Assistant
-🌟 Resumen del Proyecto
-Este proyecto es una Prueba de Concepto (PoC) que implementa un Asistente de Quiosco Adaptativo. Su objetivo principal es demostrar la capacidad de fusionar el Reconocimiento Automático de Voz (ASR) con un Modelo de Lenguaje Grande (LLM) para ir más allá de la simple transcripción.
+Proof of Concept (PoC): Voice-Aware Kiosk Assistant
+Author: Oskar David Vanegas Juarez
+Technologies: Python, Streamlit, Google Gemini API, Docker, Speech Recognition (ASR)
+Alignment with Thales: High-impact solution for biometric interaction and user experience improvement in unattended environments (kiosks).
 
-El asistente detecta la intención del usuario (si está confundido o simplemente dictando datos) y genera una respuesta contextual y empática.
+🎯 Project Objective
+The main goal of this PoC was to create a kiosk assistant that responds adaptively to users by distinguishing between:
 
-💡 Valor Clave
-Inteligencia Adaptativa: El LLM (GPT-3.5) analiza el tono y el contenido para responder con ayuda (si hay confusión) o con confirmación (si hay dictado de datos).
+Confusion/Question: If the user doesn't understand or asks for help ("How do I proceed?"), the assistant should be calm, reassuring, and provide the next simple instruction.
 
-Pila de Tecnología Completa: Uso de Python, Streamlit, OpenAI, y empaquetado final con Docker para despliegue (CI/CD).
+Statement/Data: If the user provides a response ("My name is John"), the assistant should briefly confirm ("Understood") and register the data (simulated).
 
-Manejo de Audio Robusto: Solución de la dependencia de FFmpeg para el procesamiento de archivos de audio comunes (.mp3, .m4a).
+This demonstrates AI's capability to dynamically adjust support levels based on the user's emotional state and needs, a key requirement for biometrics and digital identity.
 
-🏗️ Arquitectura y Flujo de Procesamiento
-El sistema se ejecuta dentro de un contenedor Docker para garantizar la portabilidad y el entorno de audio (FFmpeg).
+🧠 Architecture and Engineering Design
+This project was designed with a robust three-layer architecture, ideal for production environments or CI/CD (Continuous Integration/Continuous Deployment):
 
-Entrada: El usuario sube un archivo de audio al frontend de Streamlit.
+Layer	Component	Function and Technical Rationale
+1. UI/Front-end	Streamlit	Used for rapid Python prototyping (PoC) and its efficient integration with streamlit-mic-recorder component and audio handling.
+2. ASR Conversion	speech_recognition, pydub, FFmpeg	Responsible for capturing microphone audio bytes, converting to WAV format, and transcribing with Google Speech Recognition.
+3. AI Brain (LLM)	Google Gemini 2.5 Flash	Model chosen after migrating from other vendors to ensure fast performance (Flash) and use of free quota for PoC, demonstrating cost efficiency.
+4. Containerization	Dockerfile	Ensures reproducibility and deployment in any environment.
+🧩 Technical Challenges Solved (Evidence of Rigor)
+To achieve a functional and robust deployment, two crucial engineering challenges were identified and resolved:
 
-Conversión: pydub convierte el archivo de entrada a un formato WAV estándar.
+1. Audio Dependencies Deployment in Linux (Docker)
+When migrating the project to a Docker container (python:3.10-slim), the ASR module failed due to missing low-level operating system libraries.
 
-Transcripción (ASR): SpeechRecognition transcribe el audio a texto.
+Solution (Rigor/DevOps): Identified and explicitly included the installation of ffmpeg, libsndfile1, and portaudio19-dev in the Dockerfile to resolve pydub and SpeechRecognition system-level dependencies.
 
-Análisis de Intención: El texto se envía a OpenAI con un system prompt que lo dirige a clasificar la intención y generar una Respuesta Adaptativa.
+Key Command: RUN apt-get install -y ffmpeg libsndfile1 portaudio19-dev
 
-Salida: La respuesta se muestra en la interfaz web.
+2. "Invalid Role" Error in Gemini API
+After migration, the Gemini API returned a 400 INVALID_ARGUMENT error due to the use of the system role in the conversation history.
 
-⚙️ Documentación Técnica y Comandos Paso a Paso
-Esta sección detalla cada comando y herramienta utilizada para construir y desplegar el proyecto.
+Solution (Adaptability/Debugging): Refactored the get_adaptive_response function to move the system instruction (system_prompt) to the system_instruction parameter within the API call configuration, complying with Google's protocol.
 
-I. Configuración Inicial del Entorno
+🛠️ Usage and Deployment Instructions
+To run the PoC on your local machine:
 
-#,Comando Ejecutado,Propósito,Herramienta
-1,source venv/Scripts/activate,Activar el entorno virtual de Python (venv).,MINGW64 / PowerShell
-2,pip install streamlit openai SpeechRecognition pydub python-dotenv,Instalar las librerías principales de la aplicación.,pip
-3,touch requirements.txt app.py .env Dockerfile .gitignore,Crear los archivos base del proyecto.,MINGW64 (touch)
+Obtain a free GEMINI_API_KEY from Google AI Studio.
 
-II. Estructura
+Create and complete a .env file in the root directory.
 
-Archivo,Contenido Clave,Uso
-app.py,"Lógica de ASR, LLM y la interfaz Streamlit.",Ejecuta la lógica central del asistente.
-.env,"OPENAI_API_KEY=""...""",Almacena la clave secreta de OpenAI de forma segura.
-requirements.txt,Lista de librerías Python.,Define las dependencias para la construcción de Docker.
-Dockerfile,Instrucciones de construcción y FFmpeg.,Define el entorno de despliegue.
-.gitignore,Excluye venv/ y .env.,Previene la exposición de secretos en GitHub.
+Execute the Docker commands.
 
-III. Gestión de Versiones y Seguridad (Git/GitHub)
+Access http://localhost:8501.
 
-#,Comando Ejecutado,Propósito,Herramienta
-1,git init,Inicializar un nuevo repositorio Git local.,Git
-2,git add .,Añadir todos los archivos nuevos (excepto los ignorados en .gitignore).,Git
-3,"git commit -m ""feat: Initial commit...""",Crear el primer punto de control del código.,Git
-4,git rm --cached .env,SOLUCIÓN DE ERROR: Eliminar el archivo .env del historial de Git (porque se añadió accidentalmente).,Git
-5,git commit --amend --no-edit,Reescribir el último commit para asegurar que el secreto no exista en el historial.,Git
-6,git remote add origin [URL],Vincular el repositorio local con el repositorio remoto de GitHub.,Git
-7,git push -u origin master --force,"Subir el código limpio a GitHub, forzando la aceptación del historial reescrito.",Git
+Quick Start
+bash
+# Clone the repository
+git clone <repository-url>
+cd <repository-directory>
 
-IV. Despliegue y Ejecución (Docker/CI)
-#,Comando Ejecutado,Propósito,Resultado Esperado
-1,docker build -t kiosk-assistant .,"Construir la imagen de Docker, instalando FFmpeg como dependencia del sistema.",Una imagen de Docker etiquetada como kiosk-assistant.
-2,docker run -d -p 8501:8501 --env-file .env kiosk-assistant,"Ejecutar el contenedor, mapeando el puerto 8501 y pasando la clave API de forma segura.","El contenedor se ejecuta en segundo plano (detached), accesible localmente."
-3,(Navegador) http://localhost:8501,Acceder a la aplicación Streamlit en el navegador.,Interfaz lista para recibir audio y procesar el ASR/LLM.
-4,docker ps,Verificar que el contenedor esté corriendo.,Mostrar el ID y el estado Up X seconds.
-5,docker stop [ID],Detener el contenedor después de la prueba.,Finaliza el proceso de la aplicación.
+# Create .env file with your API key
+echo "GEMINI_API_KEY=your_api_key_here" > .env
 
+# Build and run with Docker
+docker build -t voice-kiosk-poc .
+docker run -p 8501:8501 voice-kiosk-poc
+⏭️ Next Steps (Future Vision)
+TTS (Text-to-Speech) Integration: Add voice response from the assistant for a completely touch-free experience.
 
-El link del proyecto: http://localhost:8501/ 
+Multilingual Support: Implement automatic language detection to assist users in Czech or Spanish (based on my language knowledge).
+
+State Management: Add logic for the assistant to remember previous user responses and guide through a complete form flow.
