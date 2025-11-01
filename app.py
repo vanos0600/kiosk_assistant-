@@ -1,31 +1,56 @@
-import streamlit as st
-from google import genai 
-from google.genai.errors import APIError
+# Importaciones necesarias para Streamlit, Gemini, ASR y manejo de audio
 import os
 import io
 import tempfile
-from pydub import AudioSegment
+import streamlit as st
 import speech_recognition as sr
+from pydub import AudioSegment
 from dotenv import load_dotenv
+
+# Importar la librería de Google GenAI (Asegúrate de tener google-genai instalado)
+# Nota: La importación de tu código original era de 'google import genai'. 
+# Lo mantendremos así para evitar conflictos de dependencia, pero se recomienda 'google.genai import Client'
+from google import genai 
+from google.genai.errors import APIError
 from streamlit_mic_recorder import mic_recorder 
 
-# --- 0. Initial Configuration and Keys ---
-load_dotenv()
-try:
-    gemini_api_key = os.getenv("GEMINI_API_KEY") 
-    if not gemini_api_key:
-        # NOTE: This error message is essential for debugging in Streamlit
-        st.error("Error: The GEMINI_API_KEY is not configured in the .env file. Please check it.")
-        st.stop()
-    client = genai.Client(api_key=gemini_api_key)
-except Exception:
-    st.error("Error initializing the Gemini API. Please check your key and environment variables.")
+# --- Configuración Inicial y Carga de Clave API (Lógica Segura) ---
+# Función de carga segura de la clave, adaptada para funcionar en Cloud y Local
+def load_gemini_api_key():
+    key = None
+    
+    # 1. Intenta leer desde Streamlit Secrets (Entorno Cloud/Despliegue)
+    # Esta es la forma oficial de leer secretos en Streamlit Cloud.
+    if "GEMINI_API_KEY" in st.secrets:
+        key = st.secrets["GEMINI_API_KEY"]
+    
+    # 2. Si no está en Secrets, intenta leer desde os.environ (Entorno Local/Docker)
+    if not key:
+        load_dotenv()
+        key = os.getenv("GEMINI_API_KEY")
+
+    return key
+
+gemini_api_key = load_gemini_api_key()
+
+# Verificación de la clave
+if not gemini_api_key:
+    # Este error se mostrará si la clave NO está configurada en Secrets (Cloud) o .env (Local/Docker)
+    st.error("Error: La clave GEMINI_API_KEY no se encontró. Por favor, asegúrese de que esté configurada como un Secret en Streamlit Cloud o en su archivo .env local.")
     st.stop()
 
+# Inicializa la API de Gemini (solo si la clave fue cargada)
+try:
+    # Usando la importación que proporcionaste (google import genai)
+    client = genai.Client(api_key=gemini_api_key)
+except Exception as e:
+    st.error(f"Error inicializando el cliente Gemini: {e}")
+    st.stop()
+    
 # --- 1. ASR Core (Speech-to-Text) ---
 def transcribe_audio(audio_bytes):
-    """Transcribes audio using Google Speech Recognition, standardizing the format via pydub."""
-    recognizer = sr.Recognizer()
+    """Transcribes audio using Google Speech Recognition, standardizando el formato vía pydub."""
+    recognizer = sr.Recognizer()  
     
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
         temp_filename = tmp_file.name
@@ -37,9 +62,10 @@ def transcribe_audio(audio_bytes):
             
             with sr.AudioFile(temp_filename) as source:
                 audio = recognizer.record(source)
+                # Usamos inglés (en-US) para la transcripción, como se definió previamente
                 transcription = recognizer.recognize_google(audio, language="en-US")
                 return transcription
-        
+            
         except sr.UnknownValueError:
             return "Could not understand the audio. Please speak more clearly."
         except sr.RequestError as e:
@@ -62,7 +88,6 @@ def get_adaptive_response(transcription: str):
     Generates an adaptive response using Google Gemini (gemini-2.5-flash).
     The system prompt is now correctly passed using system_instruction in the config.
     """
-    # Define the system instruction separately
     system_instruction = f"""
     You are a friendly, highly helpful digital kiosk assistant. Your job is to guide the user filling out a form. Analyze their transcription and generate an adaptive response based on the user's intent:
 
@@ -98,9 +123,9 @@ def get_adaptive_response(transcription: str):
 
 # --- 3. Streamlit Interface ---
 def main():
-    st.set_page_config(page_title="Voice-Aware Kiosk Assistant", layout="wide")
+    st.set_page_config(page_title="Voice-Aware Kiosk Assistant ", layout="wide")
     st.title("Voice-Aware Kiosk Assistant (Gemini & Mic)")
-    st.subheader("Demo: Live Voice Capture + Free Adaptive Response")
+    st.subheader("Demo: Live Voice Capture + Adaptive Response")
 
     st.markdown("""
         **1. Click the microphone button to record.** **2. Click 'Stop'** to transcribe and get the adaptive response from Gemini.
