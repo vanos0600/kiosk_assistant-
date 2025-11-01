@@ -14,6 +14,7 @@ load_dotenv()
 try:
     gemini_api_key = os.getenv("GEMINI_API_KEY") 
     if not gemini_api_key:
+        # NOTE: This error message is essential for debugging in Streamlit
         st.error("Error: The GEMINI_API_KEY is not configured in the .env file. Please check it.")
         st.stop()
     client = genai.Client(api_key=gemini_api_key)
@@ -36,7 +37,7 @@ def transcribe_audio(audio_bytes):
             
             with sr.AudioFile(temp_filename) as source:
                 audio = recognizer.record(source)
-                transcription = recognizer.recognize_google(audio, language="en-US") # Switched to EN for consistency, adjust if Spanish needed
+                transcription = recognizer.recognize_google(audio, language="en-US")
                 return transcription
         
         except sr.UnknownValueError:
@@ -57,8 +58,12 @@ def transcribe_audio(audio_bytes):
 
 # --- 2. LLM Brain (Adaptive Response with GEMINI) ---
 def get_adaptive_response(transcription: str):
-    """Generates an adaptive response using Google Gemini (gemini-2.5-flash)."""
-    system_prompt = f"""
+    """
+    Generates an adaptive response using Google Gemini (gemini-2.5-flash).
+    The system prompt is now correctly passed using system_instruction in the config.
+    """
+    # Define the system instruction separately
+    system_instruction = f"""
     You are a friendly, highly helpful digital kiosk assistant. Your job is to guide the user filling out a form. Analyze their transcription and generate an adaptive response based on the user's intent:
 
     1.  **Detect Difficulty/Question (E.g., "How do I fill this out?", "I don't understand").**
@@ -67,29 +72,34 @@ def get_adaptive_response(transcription: str):
     4.  **Response (Statement):** Simply confirm briefly in a friendly manner (E.g., "Understood.", "Processing data.") and wait for the next instruction.
 
     Keep the response very concise (maximum 2 sentences).
-
+    
     The user's transcription is: "{transcription}"
     """
 
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash", 
+            # ONLY the USER content is passed here. The system instruction is handled in config.
             contents=[
-                {"role": "system", "parts": [{"text": system_prompt}]},
                 {"role": "user", "parts": [{"text": transcription}]}
             ],
-            config={"temperature": 0.2}
+            config={
+                "temperature": 0.2,
+                # THIS IS THE KEY FIX: Passing the system instruction correctly
+                "system_instruction": system_instruction 
+            }
         )
         return response.text
     except APIError as e:
+        # This catches errors like Invalid API Key (400) or Rate Limits
         return f"Error contacting the Gemini API: {e}. Ensure your GEMINI_API_KEY is correct and your project has API access."
     except Exception as e:
         return f"Unexpected Gemini error: {e}"
 
 # --- 3. Streamlit Interface ---
 def main():
-    st.set_page_config(page_title="Voice-Aware Kiosk Assistant 🤖", layout="wide")
-    st.title("🤖 Voice-Aware Kiosk Assistant (Gemini & Mic)")
+    st.set_page_config(page_title="Voice-Aware Kiosk Assistant", layout="wide")
+    st.title("Voice-Aware Kiosk Assistant (Gemini & Mic)")
     st.subheader("Demo: Live Voice Capture + Free Adaptive Response")
 
     st.markdown("""
@@ -98,9 +108,10 @@ def main():
     st.divider()
 
     # NEW: Microphone Recording Component
+    # Updated start/stop prompts with emojis for better UX
     mic_result = mic_recorder(
-        start_prompt="🎙️ Click to Record",
-        stop_prompt="🛑 Click to Stop",
+        start_prompt="Click to Record",
+        stop_prompt="Click to Stop",
         key='mic_recorder',
         format='wav'
     )
@@ -129,7 +140,7 @@ def main():
             llm_response = get_adaptive_response(transcription_text)
 
         st.divider()
-        st.subheader("💡 Adaptive Assistant Response (Gemini)")
+        st.subheader("Adaptive Assistant Response (Gemini)")
         st.code(llm_response, language='markdown')
 
 
