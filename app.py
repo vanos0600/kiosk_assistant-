@@ -4,7 +4,7 @@ import io
 import tempfile
 import streamlit as st
 import speech_recognition as sr
-from pydub import AudioSegment
+# REMOVED: from pydub import AudioSegment <-- Ya no se necesita
 from dotenv import load_dotenv
 
 # Importar la librería de Google GenAI (Asegúrate de tener google-genai instalado)
@@ -14,29 +14,27 @@ from google import genai
 from google.genai.errors import APIError
 from streamlit_mic_recorder import mic_recorder 
 
-# --- Configuración Inicial y Carga de Clave API (Lógica Segura) ---
-# Función de carga segura de la clave, adaptada para funcionar en Cloud y Local
+# --- Configuración Inicial y Carga de Clave API (Lógica Simplificada para Cloud) ---
+# Función de carga segura de la clave. En Streamlit Cloud, solo se usa st.secrets.
+# Simplificamos la lógica para asegurar que la clave se lea del lugar correcto en el ambiente Cloud.
 def load_gemini_api_key():
-    key = None
+    # Intenta leer directamente desde Streamlit Secrets (funciona en Cloud)
+    # Si la clave no existe, la expresión st.secrets.get() devolverá None
+    key = st.secrets.get("GEMINI_API_KEY")
     
-    # 1. Intenta leer desde Streamlit Secrets (Entorno Cloud/Despliegue)
-    # Esta es la forma oficial de leer secretos en Streamlit Cloud.
-    if "GEMINI_API_KEY" in st.secrets:
-        key = st.secrets["GEMINI_API_KEY"]
-    
-    # 2. Si no está en Secrets, intenta leer desde os.environ (Entorno Local/Docker)
-    if not key:
+    # Para la ejecución local o con Docker, todavía se necesita dotenv
+    if key is None:
         load_dotenv()
         key = os.getenv("GEMINI_API_KEY")
-
+        
     return key
 
 gemini_api_key = load_gemini_api_key()
 
 # Verificación de la clave
 if not gemini_api_key:
-    # Este error se mostrará si la clave NO está configurada en Secrets (Cloud) o .env (Local/Docker)
-    st.error("Error: La clave GEMINI_API_KEY no se encontró. Por favor, asegúrese de que esté configurada como un Secret en Streamlit Cloud o en su archivo .env local.")
+    # Este mensaje de error ya no confunde al usuario con el .env en la nube
+    st.error("Error: La clave GEMINI_API_KEY no se encontró. Por favor, revise la configuración de 'Secrets' en Streamlit Cloud.")
     st.stop()
 
 # Inicializa la API de Gemini (solo si la clave fue cargada)
@@ -49,37 +47,28 @@ except Exception as e:
     
 # --- 1. ASR Core (Speech-to-Text) ---
 def transcribe_audio(audio_bytes):
-    """Transcribes audio using Google Speech Recognition, standardizando el formato vía pydub."""
+    """
+    Transcribes audio usando la librería SpeechRecognition, 
+    leyendo directamente los bytes WAV del grabador de Streamlit,
+    eliminando la necesidad de pydub/ffprobe.
+    """
     recognizer = sr.Recognizer()  
     
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-        temp_filename = tmp_file.name
+    # Crea un objeto AudioData de SpeechRecognition directamente desde los bytes WAV
+    # Los parámetros (sample_rate y sample_width) son los estándares para el formato WAV
+    audio_data = sr.AudioData(audio_bytes, sample_rate=44100, sample_width=2)
+    
+    try:
+        # Usa el motor de reconocimiento de Google
+        transcription = recognizer.recognize_google(audio_data, language="en-US")
+        return transcription
         
-        try:
-            # pydub loads the raw bytes from the microphone recorder
-            audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
-            audio_segment.export(temp_filename, format="wav")
-            
-            with sr.AudioFile(temp_filename) as source:
-                audio = recognizer.record(source)
-                # Usamos inglés (en-US) para la transcripción, como se definió previamente
-                transcription = recognizer.recognize_google(audio, language="en-US")
-                return transcription
-            
-        except sr.UnknownValueError:
-            return "Could not understand the audio. Please speak more clearly."
-        except sr.RequestError as e:
-            return f"Error with Google Speech Recognition service; check your internet connection. Error: {e}"
-        except Exception as e:
-            return f"Audio processing error: {e}"
-        finally:
-            if os.path.exists(temp_filename):
-                try:
-                    os.remove(temp_filename)
-                except PermissionError:
-                    st.warning("Warning: Could not immediately delete the temporary file (Windows permission issue).")
-                except Exception as e:
-                    st.warning(f"Warning while trying to delete temporary file: {e}")
+    except sr.UnknownValueError:
+        return "Could not understand the audio. Please speak more clearly."
+    except sr.RequestError as e:
+        return f"Error with Google Speech Recognition service; check your internet connection. Error: {e}"
+    except Exception as e:
+        return f"Audio processing error: {e}"
 
 
 # --- 2. LLM Brain (Adaptive Response with GEMINI) ---
@@ -123,7 +112,7 @@ def get_adaptive_response(transcription: str):
 
 # --- 3. Streamlit Interface ---
 def main():
-    st.set_page_config(page_title="Voice-Aware Kiosk Assistant ", layout="wide")
+    st.set_page_config(page_title="Voice-Aware Kiosk Assistant 🤖", layout="wide")
     st.title("Voice-Aware Kiosk Assistant (Gemini & Mic)")
     st.subheader("Demo: Live Voice Capture + Adaptive Response")
 
