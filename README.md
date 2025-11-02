@@ -61,7 +61,9 @@ docker run -p 8501:8501 voice-kiosk-poc
 ⏭️ Next Steps (Future Vision)
 TTS (Text-to-Speech) Integration: Add voice response from the assistant for a completely touch-free experience.
 
-Multilingual Support: Implement automatic language detection to assist users in Czech or Spanish (based on my language knowledge).
+
+Future improvements and implementations: 
+Multilingual Support: Implementation of automatic language detection to assist users in Czech or Spanish (based on my language knowledge).
 
 State Management: Add logic for the assistant to remember previous user responses and guide through a complete form flow.
 
