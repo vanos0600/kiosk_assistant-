@@ -63,9 +63,11 @@ TTS (Text-to-Speech) Integration: Add voice response from the assistant for a co
 
 
 Future improvements and implementations: 
-Multilingual Support: Implementation of automatic language detection to assist users in Czech or Spanish (based on my language knowledge).
 
-State Management: Add logic for the assistant to remember previous user responses and guide through a complete form flow.
+
+1- Multilingual Support: Implementation of automatic language detection to assist users in Czech or Spanish (based on my language knowledge).
+
+2- State Management: Add logic for the assistant to remember previous user responses and guide through a complete form flow.
 
 
 
