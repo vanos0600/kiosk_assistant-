@@ -72,3 +72,5 @@ Future improvements and implementations:
 
 
 PLEASE CHECK THE DEMO HERE: https://2gppeqgafazftptkdsuvbz.streamlit.app/
+
+Made by Oskar David Vanegas Juarez 
